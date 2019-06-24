@@ -1,0 +1,332 @@
+---
+title: "Pudding Styled Report"
+author: "Amber Thomas"
+date: "Last updated: `r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  puddingR::puddingTheme:
+    toc: true
+    code_folding: "show"
+    number_sections: "false"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Russell and I are working together to answer several questions about the way that people utilize libraries, specifically, the Seattle Public library. The SPL has lots of [open data](https://data.seattle.gov/Community/Integrated-Library-System-ILS-Data-Dictionary/pbt3-ytbc), including their [full catalog of items](https://data.seattle.gov/Community/Library-Collection-Inventory/6vkj-f5xf) (2017 - 2019, monthly), and all [checkouts of physical items](https://data.seattle.gov/Community/Checkouts-By-Title-Data-Lens/5src-czff) (2005 - 2019). 
+
+Here are a few of the questions that we hope to answer:
+
+* How much of our knowledge is being forgotten (i.e., how many days has it been since each item has been checked out?)
+* What books are/aren't getting love (i.e., is this like wealth distribution where 99% of the love goes to 1% of the books?)
+
+
+### Load Packages
+
+I'll import the packages that I need:
+
+```{r load_packages, message = FALSE}
+# For general data cleaning and analysis
+library(tidyverse)
+library(glue)
+
+# For keeping your files in relative directories
+library(here)
+
+# If you want to interact with Google Drive (e.g., upload or download files)
+library(googledrive)
+
+# For interactive/searchable tables in your report
+library(DT)
+
+# For dealing with very large datasets locally
+library(data.table)
+
+# For downloading json data
+library(jsonlite)
+
+# For dealing with Socrata API
+library(RSocrata)
+# For pinging API manually
+library(httr)
+library(curl)
+library(attempt)
+```
+
+### Load Data
+
+Now to load the data. The thing is, the data that we need is quite large. 101,286,851 rows (a 9.2 GB `.csv` file). And that's just for the checkout records.
+
+We decided that we'd begin by limiting the items that we are looking at to just those that are:
+
+* physical books
+* able to be checked out (i.e., not `Reference` books)
+* either `fiction` or `non-fiction` books
+
+Using their [code dictionary](https://data.seattle.gov/Community/Integrated-Library-System-ILS-Data-Dictionary/pbt3-ytbc), we were able to create a small `.csv` file that contains just the item codes that we're looking for (e.g., code `acbk` = "Book: Adult/YA").
+
+Let's import that file:
+
+```{r load_filter, message=FALSE}
+# use here to find the file you want and save the file path to a variable
+file_path <- here::here("assets", "data", "raw_data", "book_codes.csv")
+
+# from csv
+filter <- readr::read_csv(file_path) %>% 
+  dplyr::rename("group" = "Category Group", "code" = "Code", "description" = "Description")
+
+# create a character vector of just the code values
+code <- filter$code
+```
+
+Now we need to try to load in a file that is `r file.info(here::here("assets", "data", "raw_data", "checkouts.csv"))$size / 2^30` GB. That is far too large for my poor little MacBook to run in local memory (considering that R loads everything into memory). So, I'm going to see if I can work with this data by importing it using `sqldf`, filtering the data as it loads. 
+
+```{r prepare_large}
+# set variable for giant file location 
+checkout_loc <- here::here("assets", "data", "raw_data", "checkouts.csv")
+
+# look for column titles
+col_hed <- read.csv(here::here("assets", "data", "raw_data", "checkouts.csv"), nrows = 5)
+
+col_hed
+```
+
+Ok, so now I know that I want to only import rows where the `Collection` is in the code column of our `filter` dataset. I should be able to filter the data this way as it's being read by `sqldf` If this crashes, I'll try something else.
+
+```{r import_large eval = FALSE}
+#co_file <- file(checkout_loc)
+
+classes <- c("numeric", "numeric", "numeric", "numeric", "character", "character", "character", "character", "character", "character")
+
+# import file and filter only the rows we want
+# checkouts <- read.csv.sql(file = checkout_loc,
+#                           sql = "select * from file where ItemType in code",
+#                           nrows = 1,
+#                           header = TRUE,
+#                           filter = "tr -d '\"' ")
+
+# checkouts <- sqldf("select * from co_file where ItemType in code",
+#                    dbname = tempfile(),
+#                    file.format = list(header = TRUE, row.names = FALSE, sep = ",", nlines = 5, quote = "\"'"))
+```
+
+Ok, so `sqldf` can't handle double quoted fields. `ff` was struggling to deal with a column of data that contained strings. `read.csv` seems to be working fine, though, it just can't load everything into working memory. 
+
+```{r eval = FALSE}
+keep_cols <- c("NULL", "NULL", "numeric", "NULL", "character", "character", "NULL", "NULL", "NULL", "character")
+
+
+f_exists <- file.exists(checkout_loc)
+
+DT <- function(d){
+  data.table::fread(d,
+                               header = TRUE,
+                               sep = ",")
+}
+
+possibly_DT <- possibly(DT, otherwise = NA)
+
+checkouts <- possibly_DT(checkout_loc)
+
+checkouts <- readr::read_csv(checkout_loc,
+                             skip = 39104460,
+                             col_types = "__n_cc___D")
+
+
+
+checkouts <- read.table(checkout_loc, header = TRUE, sep = ",", colClasses = keep_cols, )
+```
+
+Alright, the above code crashed my R session twice. It ran to completion when I didn't have the `fill = TRUE` argument, but that was a necessary addition as a single row of data somewhere in this file seems to have broken everything. 
+
+I was trying to avoid loading the data in chunks, but I think that'll work best at this point. So, to writing a function we go:
+
+```{r}
+interval = 10000
+export_needed_data <- function(start, .pb = NULL){
+  # handle progress bar
+  if ((!is.null(.pb)) && inherits(.pb, "Progress") && (.pb$i < .pb$n)) .pb$tick()$print()
+    
+  # indicate a filename
+  filename <- here::here("assets", "data", "processed_data", "checkouts_books.tsv")
+  
+  # check if the file already exists
+  f_exists <- file.exists(filename)
+  
+  # read in the data
+  data <- data.table::fread(checkout_loc,
+                               header = !f_exists,
+                               sep = ",",
+                               skip = start,
+                               nrows = interval)
+  
+    # filter to just the items we need using column number
+  filtered <- data %>% filter( .[[6]] %in% code)
+
+  
+  write.table(filtered, file = filename, row.names = FALSE, append = TRUE, sep = "\t", col.names = !f_exists)
+}
+
+funTest <- export_needed_data(0)
+
+# provide a safe alternative
+possibly_export <- purrr::possibly(export_needed_data, otherwise = NA)
+
+
+# come up with a list of start values
+startVal <-  list(start = seq(from = 1, to = 101286851, by = interval))
+
+# setup progress bar
+pb <- progress_estimated(length(startVal$start))
+
+filtered <- purrr::map_dfr(startVal$start, possibly_export, .pb = pb)
+```
+
+```{r}
+check <- fread(here::here("assets", "data", "processed_data", "checkouts_books.tsv"), sep = "\t", header = TRUE)
+
+check2 <- check %>% 
+  group_by(ItemTitle) %>% 
+  distinct(CheckoutDateTime, .keep_all = TRUE)
+```
+
+This seems to work fine. But, for ease, we are going to eliminate columns with commas in them for now, only keeping: `BibNumber`, `ItemType`, `Collection`, and `CheckoutDateTime`.
+
+```{r}
+col_to_keep <- c("BibNumber", "ItemType", "Collection", "CheckoutDateTime")
+checkouts <- data.table::fread(checkout_loc,
+                               header = TRUE,
+                               select = col_to_keep)
+```
+Ok, looks like we hit an error on line 39,104,449. But! 39,104,447 rows were read into memory! Let's write those to file and skip over the problem entry.
+
+```{r}
+filtered <- checkouts %>% 
+  filter(Collection %in% code)
+
+puddingR::export_processed(filtered, "checkouts_books", directory = here::here("assets", "data", "processed_data"))
+```
+
+Now let's skip over the problem row and read the rest:
+```{r load_remaining}
+col_to_keep <- c("BibNumber", "ItemType", "Collection", "CheckoutDateTime")
+checkouts <- data.table::fread(checkout_loc,
+                               select = c(3, 5, 6, 10),
+                               skip = 39104452, 
+                               nrows = 100)
+```
+Alright, that also breaks which makes me think there's something especially weird going on with that row. Let's try just reading in that and a few following lines:
+
+```{r}
+broken <- readr::read_lines(checkout_loc, skip = 39104445, n_max = 39104455)
+```
+Wait...something is broken here. Are there actually 100 million rows in this dataset?
+
+```{r}
+row_count <- length(readr::count_fields(checkout_loc, tokenizer = readr::tokenizer_csv())) - 1
+# well, that errored out in the same spot
+
+row_count <- dim(data.table::fread(checkout_loc))[[1]] 
+```
+Alright, so those both error out because no, there aren't 101 million rows in this file. It appears to be corrupted. Let's see what other options for getting the data we have.
+
+We'll start by trying this R package `RSocrata` to connect to the API. This way we can download the data in chunks at a time.
+
+```{r}
+token <- Sys.getenv("SOCRATA")
+limit <- 10
+codeString <- paste0(code, collapse = "', '")
+base_url <- "https://data.seattle.gov/resource/5src-czff.json?$limit=50"
+
+url <- glue::glue("https://data.seattle.gov/resource/5src-czff.csv?$limit={limit}&$select=bibnumber")
+#checkouts <- RSocrata::read.socrata(url, app_token = token)
+```
+Alright, that isn't working. Let's try hitting the API manually:
+
+```{r}
+limit <- 20
+codeString <- paste0(code, collapse = "', '")
+base_url <- glue::glue("https://data.seattle.gov/resource/5src-czff.json?$$app_token={token}")
+
+url <- glue::glue("https://data.seattle.gov/resource/5src-czff.json?$$app_token={token}&$limit={limit}&$select=bibnumber,collection,itemtype,checkoutdatetime&$where=collection in ('{codeString}')")
+
+encoded <- URLencode(url)
+checkouts <- httr::GET(url = encoded)
+clean <- jsonlite::fromJSON(rawToChar(checkouts$content))
+```
+
+Alright, now to put all of this into a function so I can loop through it and write it to file as it goes
+
+```{r}
+check_status <- function(res){
+  attempt::stop_if_not(.x = status_code(res), 
+              .p = ~ .x == 200,
+              msg = "The API returned an error")
+}
+```
+
+
+```{r}
+limit <- 50000
+ping_API <- function(start, .pb = NULL){
+  # handle progress bar
+  if ((!is.null(.pb)) && inherits(.pb, "Progress") && (.pb$i < .pb$n)) .pb$tick()$print()
+  
+  base_url <- "https://data.seattle.gov/resource/5src-czff.json"
+  order <- "checkoutdatetime DESC"
+  stopping_point <- "2014-11-24T15:31:00.000"
+  
+  # build the URL
+  url <- glue::glue("{base_url}?$$app_token={token}&$order={order}&$limit={limit}&$offset={start}&$select=bibnumber,collection,itemtype,checkoutdatetime&$where=(checkoutdatetime < '2014-11-24T15:31:00.000') AND collection in ('{codeString}')")
+  
+  # encode it
+  encoded <- URLencode(url)
+  
+  # create the call
+  call <- httr::GET(url = encoded)
+  
+  # check the status
+  check_status(call)
+  
+  # Get the content and return as a dataframe
+  results <- jsonlite::fromJSON(rawToChar(call$content))
+  
+  # log out the date it made it to
+  print(tail(results$checkoutdatetime, n = 1))
+      
+  # indicate a filename
+  filename <- here::here("assets", "data", "processed_data", "checkouts_books_api2.csv")
+  f_exists <- file.exists(filename)
+  
+  # write to file
+  fwrite(results, file = filename, append = TRUE, sep = ",", col.names = !f_exists)
+}
+```
+
+```{r ping_api}
+#limit <- 50
+#test <- ping_API(50)
+
+startVal <-  list(start = seq(from = 1, to = 101286851, by = limit))
+
+possibly_ping_API <- possibly(ping_API, NA)
+
+pb <- progress_estimated(length(startVal$start))
+
+checkoutsAPI <- purrr::map_dfr(startVal$start, possibly_ping_API, .pb = pb)
+```
+Yay! so the above code ended up working, it just took like 2 days to run completely. 
+
+
+
+### Downloading the entire directory
+
+In an effort to move this along faster, I'm going to download this file via the command line. That code looks like this:
+
+```
+curl -o inventory.csv "https://data.seattle.gov/api/views/6vkj-f5xf/rows.csv?accessType=DOWNLOAD"
+```
+
+8:42 AM

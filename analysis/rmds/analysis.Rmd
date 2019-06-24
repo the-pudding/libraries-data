@@ -1,0 +1,970 @@
+---
+title: "Library Analysis"
+author: "Amber Thomas"
+date: "Last updated: `r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  puddingR::puddingTheme:
+    toc: true
+    code_folding: "show"
+    number_sections: "false"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Russell and I are working together to answer several questions about the way that people utilize libraries, specifically, the Seattle Public library. The SPL has lots of [open data](https://data.seattle.gov/Community/Integrated-Library-System-ILS-Data-Dictionary/pbt3-ytbc), including their [full catalog of items](https://data.seattle.gov/Community/Library-Collection-Inventory/6vkj-f5xf) (2017 - 2019, monthly), and all [checkouts of physical items](https://data.seattle.gov/Community/Checkouts-By-Title-Data-Lens/5src-czff) (2005 - 2019). 
+
+Here are a few of the questions that we hope to answer:
+
+* How much of our knowledge is being forgotten (i.e., how many days has it been since each item has been checked out?)
+* What books are/aren't getting love (i.e., is this like wealth distribution where 99% of the love goes to 1% of the books?)
+
+
+### Load Packages
+
+I'll import the packages that I need:
+
+```{r load_packages, message = FALSE}
+# For general data cleaning and analysis
+library(tidyverse)
+library(glue)
+# Because a newer version of tidyr needed
+library(rlang)
+library(tidyr)
+
+
+# For keeping your files in relative directories
+library(here)
+
+# For interactive/searchable tables in your report
+library(DT)
+
+# For dealing with very large datasets locally
+library(data.table)
+
+# For dealing with dates
+library(lubridate)
+
+# For Pudding-related convenience functions
+library(puddingR)
+
+# For handling big file filtered imports
+library(sqldf)
+
+# For downloading from Google Drive
+library(googledrive)
+```
+
+
+### Load Data
+
+Because the data file is large, I'm going to use the `fread` function from `data.table`.
+
+```{r load_data, eval = FALSE}
+filePath <- here::here("assets", "data", "raw_data", "checkouts--books-small.csv")
+  
+# download from local file
+checkouts <- data.table::fread(filePath) %>% 
+  # convert checkoutdatetime to a date object
+  mutate(date = mdy(CheckoutDateTime)) %>% 
+  select(-CheckoutDateTime)
+```
+
+## Data Exploration 
+
+Now to start exploring and analyzing the data
+
+### Days Since Checkout
+
+Let's see if I can get to the first question at hand: how many days has it been since each book has been checked out last? 
+
+First, I need to know the latest date in the dataset:
+
+```{r calculate_max_date, eval = FALSE}
+max <- checkouts %>% 
+  arrange(desc(date)) %>% 
+  slice(1)
+
+maxDate <- max$date
+```
+
+```{r manual_max, echo = FALSE}
+# manual so we don't have to run the above and load the entire checkouts file each time
+# if checkouts changes, update this!
+maxDate <- ymd("2019-05-14")
+```
+
+
+For the record, it was `r maxDate`. Now, we'll go through and programmatically calculate the time between that date the last time each item was checked out.
+
+```{r calculate_last_checkout, eval = FALSE}
+# Calculate time between last checkout and May 14, 2019
+last <- checkouts %>% 
+  # group by bibliographic number and arrange by descending date
+  group_by(BibNumber) %>% 
+  arrange(desc(date)) %>% 
+  # keep only the most recent date
+  slice(1) %>% 
+  ungroup() %>% 
+  # calculate the length of time between the max date and the date listed for each checkout
+  # this includes leap years and other time anomalies
+  rowwise() %>% 
+  mutate(
+    daysSinceCheckout = lubridate::time_length(interval(
+      start = date,
+      end = maxDate
+    ), "days")
+  )
+```
+
+For safe keeping, let's write that to a csv file in the `processed_data` directory.
+
+```{r write_last, eval = FALSE}
+# write last to file
+outputLast <- here::here("assets", "data", "processed_data")
+puddingR::export_data(last, "last_checkout", directory = outputLast)
+```
+
+```{r import_last, echo = FALSE}
+outputLast <- here::here("assets", "data", "processed_data", "last_checkout.csv")
+last <- data.table::fread(outputLast) %>% 
+  mutate(date = ymd(date))
+```
+
+Can we make a histogram of these? 
+
+```{r message=FALSE}
+ggplot(last, aes(x = daysSinceCheckout)) + geom_histogram()
+```
+```{r calculating_last_60, echo = FALSE}
+last60 <- last %>% 
+  filter(daysSinceCheckout <= 60) %>% 
+  count(.)
+```
+
+Wow, so according to this, `r ((last60$n)/nrow(last)) * 100`% of books have been checked out in the last 60 days. 
+
+How many haven't been checked out in the past year? 
+
+```{r calculating_last_365}
+# calculate books that haven't been checked out in at least 365 days
+pastYear <- last %>% 
+  filter(daysSinceCheckout > 365) %>% 
+  count(.)
+
+# calculate the percentage of books that meet the above criteria
+yearPercent <- (pastYear$n / nrow(last) * 100)
+yearPercent
+```
+Ouch, `r yearPercent`%?! 
+
+How many were checked out the day we ran the data?
+
+```{r zero_days}
+zero <- last %>% 
+  filter(daysSinceCheckout == 0)
+```
+`r nrow(zero)`
+
+### Quantity of Checkouts
+
+Now that we have an idea of how often books are checked out, we can look at how many times a book has been checked out.
+
+```{r calculating_checkout_quantity, eval = FALSE}
+# Calculate the number of times each item has been checked out
+quant <- checkouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>% 
+  summarise(count = n()) %>% 
+  # remove WiFi logins
+  filter(BibNumber != "3030520")
+```
+
+And save it to a file
+
+```{r write_quant, eval = FALSE}
+# write quant to file
+outputQuant <- here::here("assets", "data", "processed_data")
+puddingR::export_data(quant, "checkout_quantity", directory = outputQuant) 
+```
+```{r import_quant, echo = FALSE}
+outputQuant <- here::here("assets", "data", "processed_data", "checkout_quantity.csv")
+quant <- data.table::fread(outputQuant) %>% 
+  # remove WiFi logins
+  filter(BibNumber != "3030520")
+```
+
+Now to checkout the histogram of checkout counts
+
+```{r}
+ggplot(quant, aes(x = count)) + geom_histogram(binwidth = 10) +
+  ylab("Number of Books") + 
+  xlab("Number of Checkouts Per Book") 
+```
+
+Hmm let's try looking at this another way. Calculating it like income distribution:
+
+```{r wealth_distribution}
+# Calculating bins
+bins <- quant %>% 
+  # Break up data into 100 bins based on checkout number
+  mutate(bin = ntile(count, 100))
+
+# Find average per bin
+distribution <- bins %>% 
+  group_by(bin) %>% 
+  summarise(average = round(mean(count)))
+```
+
+And plot the distribution
+
+```{r}
+ggplot(distribution, aes(x = bin, y = average)) + geom_bar(stat = "identity") 
+```
+
+What percentage of checkouts are attributed to the most checked out 1% of books?
+
+```{r one_percent}
+# Find total number of book checkouts across all books
+totalCheckouts <- bins %>% 
+  summarise(sum = sum(count))
+
+# Find total number of checkouts from just the 1% of most checked-out books
+one_percent <- bins %>% 
+  filter(bin == 100) %>% 
+  summarise(sum = sum(count))
+```
+Looks like `r round(one_percent$sum / totalCheckouts$sum * 100)`% of checkouts come from the top 1% of most checked out books.
+
+How about top 5%?
+```{r five_percent}
+# Find total number of checkouts from just the 1% of most checked-out books
+five_percent <- bins %>% 
+  filter(bin > 95) %>% 
+  summarise(sum = sum(count))
+```
+A full `r round(five_percent$sum / totalCheckouts$sum * 100)`% of checkouts come from the most popular 5% of books!
+
+What does the checkout behavior look like of the top 1% of books?
+
+```{r}
+one <- bins %>% 
+  filter(bin == 100) %>% 
+    # Break up data into 100 bins based on checkout number
+  mutate(newBin = ntile(count, 250)) %>% 
+  filter(newBin == 250)
+
+oneCheckouts <- checkouts %>% 
+  filter(BibNumber %in% one$BibNumber) %>% 
+  mutate(month = floor_date(date, "month")) %>% 
+  group_by(BibNumber, month) %>% 
+  summarise(count = n())
+
+ggplot(oneCheckouts, aes(x = month, y = count, group = BibNumber)) + geom_line() + facet_wrap(~BibNumber, ncol = 2, scales = "free_y")
+```
+
+```{r}
+hp <- oneCheckouts %>% 
+  filter(BibNumber == 2277368)
+
+ggplot(hp, aes(x = month, y = count, group = BibNumber)) + geom_line() + 
+	theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+```
+
+
+How many books have been checked out <15 times?
+```{r}
+low <- quant %>% 
+  filter(count <= 3)
+
+nrow(low)/nrow(quant)
+```
+
+
+### Lag Time Between Checkouts
+
+How much time goes by between a book being checked out and placed back on the shelf? I'll calculate median lag time between checkouts per book
+
+```{r calculate_lag, eval = FALSE}
+sub <- lagtime %>% filter(BibNumber %in% c("2455046", "2444236", "2378434"))
+lagtime <- checkouts %>% 
+  group_by(BibNumber) %>% 
+  arrange(date) %>% 
+  mutate(timeSinceLast = date - lag(date)) 
+
+outputLagSum <- here::here("assets", "data", "processed_data", "checkouts_lag_sum.csv")
+
+lagSum <- lagtime %>% 
+  group_by(BibNumber) %>% 
+  filter(!is.na(timeSinceLast)) %>% 
+  summarise(median = median(timeSinceLast), 
+            mean = mean(timeSinceLast)) %>% 
+  fwrite(., file = outputLagSum)
+```
+
+```{r write_lag, eval = FALSE}
+# write lagtime to file
+outputLag <- here::here("assets", "data", "processed_data", "checkout_lagtime.csv")
+fwrite(lagtime, file = outputLag)
+#puddingR::export_data(lagtime, "checkout_lagtime", directory = outputLag) 
+```
+```{r import_lag, echo = FALSE}
+#outputLag <- here::here("assets", "data", "processed_data", "checkout_lagtime.csv")
+#lagtime <- fread(outputLag)
+outputLagSum <- here::here("assets", "data", "processed_data", "checkouts_lag_sum.csv")
+lagSum <- fread(outputLagSum)
+```
+
+```{r}
+ggplot(lagSum, aes(x = median)) + geom_histogram()
+```
+
+How many books have a median lag time between checkouts of less than 30 days? 
+
+```{r median_under_30}
+under30 <- lagSum %>% 
+  filter(median <= 30)
+```
+Huh, `r round((nrow(under30) / nrow(lagSum)) * 100)`% of books are checked out at least once a month. 
+
+What percentage are checked out at least once a year (on average)?
+
+```{r median_under_365}
+under365 <- lagSum %>% 
+  filter(median <= 365)
+```
+Wow, a full `r round((nrow(under365) / nrow(lagSum)) * 100)`% of books are (on average) checked out at least once a year. 
+
+### Catalog
+
+To add more detail to the above data, I'm going to import the library's full catalog.
+
+```{r load_catalog, eval = FALSE}
+catalog <- fread(here::here("assets", "data", "raw_data", "inventory--books.csv"))
+```
+The full catalog is huge, so let's try to import just the bits we need.
+```{r load_filter, message=FALSE}
+# use here to find the file you want and save the file path to a variable
+file_path <- here::here("assets", "data", "raw_data", "book_codes.csv")
+
+# from csv
+filter <- readr::read_csv(file_path) %>% 
+  dplyr::rename("group" = "Category Group", "code" = "Code", "description" = "Description")
+
+# create a character vector of just the code values
+code <- filter$code
+```
+
+```{r write_catalog_filter, eval = FALSE}
+# list the location of the entire inventory file
+inventoryLoc <- here::here("assets", "data", "raw_data", "inventory.csv")
+
+# import file and filter only the columns we want
+invCol <- c("numeric", "character", "character", "character", "character", "NULL", "character", "character", "character", "NULL", "NULL", "character", "numeric" )
+
+catalogCheck <- fread(inventoryLoc,
+                      header = TRUE,
+                      colClasses = invCol)
+
+# Filter the catalog to just the parts we need
+catalogFilter <- catalogCheck %>% 
+  # Keep only the items whose ItemCollection are in the "code" file
+  filter(ItemCollection %in% code) %>% 
+  # count the total number of copies of each book at each report date
+  group_by(ReportDate, BibNum) %>% 
+  mutate(totalCopies = sum(ItemCount)) %>% 
+  # Keep only one entry per item per report date
+  group_by(ReportDate) %>% 
+  distinct(BibNum, .keep_all = TRUE) %>% 
+  # Write to file
+  fwrite(., here::here("assets", "data", "processed_data", "inventory_books_copies.csv"))
+```
+
+Alright, so I need to make a few adjustments to trim down the size of this catalog. For each report date, I need a sum of copies of each book for each inventory report date. Then, I also need to find the earliest and latest dates that each item was in the library's inventory. 
+
+```{r write_catalog_minimal, eval = FALSE}
+# Import the file if necessary
+catalogFilter <- fread(here::here("assets", "data", "processed_data", "inventory_books_copies.csv"))
+
+# Further reduce the data
+catalogMinimal <- catalogFilter %>% 
+  # conver the date to a date object
+  mutate(date = mdy(ReportDate)) %>% 
+  # Arrange item entries by report date
+  # Noting only the earliest and latest reports of each item
+  group_by(BibNum) %>% 
+  arrange(date) %>% 
+  mutate(maxDate = max(date),
+         minDate = min(date), 
+         maxCopies = max(totalCopies)) %>% 
+  # Keep only one entry of each item
+  distinct(BibNum, .keep_all = TRUE) %>% 
+  # Remove unneccessary columns
+  select(-c("ReportDate", "ItemCount", "totalCopies", "date")) %>% 
+  fwrite(., here::here("assets", "data", "processed_data", "inventory_minimal.csv"))
+```
+
+```{r load_catalog_minimal, echo = FALSE}
+# Import data when needed
+catalogMinimal <- fread(here::here("assets", "data", "processed_data", "inventory_minimal.csv"))
+```
+
+So, strangely, I'm seeing `r nrow(last)` unique items that have been checked out at least once in the past 14 years, but only `r nrow(catalogMinimal)` unique items in the catalog. It is possible that there are `r nrow(last) - nrow(catalogMinimal)` items that used to be in the inventory at some point and aren't now? Let's look into the items that are missing. I'll use an `anti_join`.
+
+```{r find_missing}
+missingCat <- last %>% 
+  anti_join(catalogMinimal, by = c("BibNumber" = "BibNum"))
+
+sample <- head(missingCat, n = 1000)
+```
+
+Huh...that's quite a lot of books. I'll have to follow up with the library about this.
+
+### Top Books
+
+Let's find which books are the most common to check out 
+```{r calculate_top, eval = FALSE}
+topBooks <- checkouts %>% 
+  count(BibNumber, sort = TRUE)
+```
+
+```{r write_top, eval = FALSE}
+topPath <- here::here("assets", "data", "processed_data", "top_books.csv")
+fwrite(topBooks, topPath)
+```
+
+```{r read_top, eval = TRUE, echo = FALSE}
+topBooks <- fread(here::here("assets", "data", "processed_data", "top_books.csv"))
+head(topBooks, 20)
+```
+
+
+### Kids vs. Adults
+
+A quick look at the data overall shows something interesting, `Green Eggs and Ham` is the most checked-out book overall. This is adorable and heart-warming, but it makes me wonder what the "wealth distribution" of kids books looks like. Are kids still checking out the same books at a much higher rate than others? Or do they spread out their "checkout wealth" reading all the things?
+
+*First, since we're dealing just with the inventory from September 2017 onward, I will only look at checkouts that happened after that date.*
+
+```{r kids_dictionary, eval = FALSE}
+# import data dictionary
+dictionary <- read_csv(here::here("assets", "data", "raw_data", "data_dictionary.csv"))
+
+# separate out the codes that indicate children's items
+kidsDict <- dictionary %>% 
+  filter(grepl("Children", Description))
+
+# keep only the codes
+kidsCodes <- kidsDict$Code
+
+# separate out the codes that indicate adult items
+adultDict <- dictionary %>% 
+  filter(grepl("Adult", Description))
+  
+# keep only the codes
+adultCodes <- adultDict$Code
+```
+
+
+```{r calculate_recent, eval = FALSE}
+# keep only necessary columns of catalog
+joiningCat <- catalogMinimal %>% 
+  select(c(BibNum, Title, ItemCollection, maxCopies))
+
+recent <- checkouts %>% 
+  # keep only checkout dates after our inventory record starts
+  filter(date >= ymd("2017-09-01")) %>% 
+  # join with the catalog information
+  left_join(joiningCat, by = c("BibNumber" = "BibNum")) %>% 
+  # identify the kids vs. adult items
+  mutate(type = case_when(
+    ItemCollection %in% kidsCodes ~ "kid",
+    ItemCollection %in% adultCodes ~ "adult", 
+    TRUE ~ "other"
+  )) 
+
+# export to file
+kidsCheckouts <- recent %>% 
+  filter(type == "kid") %>% 
+  write_csv(., here::here("assets", "data", "processed_data", "kids_checkouts.csv"))
+
+adultCheckouts <- recent %>% 
+  filter(type == "adult") %>% 
+  write_csv(., here::here("assets", "data", "processed_data", "adult_checkouts.csv"))
+```
+
+```{r load_kids, echo = FALSE}
+kidsCheckouts <- fread(here::here("assets", "data", "processed_data", "kids_checkouts.csv"))
+adultCheckouts <- fread(here::here("assets", "data", "processed_data", "adult_checkouts.csv"))
+```
+
+Ok, now that we've got our data separated out, let's look at the "wealth distribution" of kids books:
+
+```{r calculate_kids_wealth}
+# Calculating bins
+kidsBins <- kidsCheckouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>% 
+  summarise(count = n()) %>% 
+  # Break up data into 100 bins based on checkout number
+  mutate(bin = ntile(count, 100))
+
+# Find average per bin
+kidsDistribution <- kidsBins %>% 
+  group_by(bin) %>% 
+  summarise(average = round(mean(count)))
+```
+
+And plot the distribution
+
+```{r}
+ggplot(kidsDistribution, aes(x = bin, y = average)) + geom_bar(stat = "identity") 
+```
+
+and adult books:
+
+```{r calculate_adult_wealth}
+# Calculating bins
+adultBins <- adultCheckouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>% 
+  summarise(count = n()) %>% 
+  # Break up data into 100 bins based on checkout number
+  mutate(bin = ntile(count, 100))
+
+# Find average per bin
+adultDistribution <- adultBins %>% 
+  group_by(bin) %>% 
+  summarise(average = round(mean(count)))
+```
+
+And plot the distribution
+
+```{r}
+ggplot(adultDistribution, aes(x = bin, y = average)) + geom_bar(stat = "identity") 
+```
+
+So for each, what percentage of checkouts go to the 1% most popular books?
+
+```{r one_percent_kids}
+# Find total number of book checkouts across all books
+totalCheckoutsKids <- kidsBins %>% 
+  summarise(sum = sum(count))
+
+# Find total number of checkouts from just the 1% of most checked-out books
+one_percent_kids <- kidsBins %>% 
+  filter(bin < 90) %>% 
+  summarise(sum = sum(count))
+
+round(one_percent_kids$sum / totalCheckoutsKids$sum * 100)
+```
+```{r one_percent_adults}
+# Find total number of book checkouts across all books
+totalCheckoutsAdult <- adultBins %>% 
+  summarise(sum = sum(count))
+
+# Find total number of checkouts from just the 1% of most checked-out books
+one_percent_adult <- adultBins %>% 
+  filter(bin < 90) %>% 
+  summarise(sum = sum(count))
+
+round(one_percent_adult$sum / totalCheckoutsAdult$sum * 100)
+```
+
+Looks like `r round(one_percent_kids$sum / totalCheckoutsKids$sum * 100)`% of kids' checkouts come from the top 1% of most checked out books, while `r round(one_percent_adult$sum / totalCheckoutsAdult$sum * 100)`% of adult's checkouts come from the top 1%.
+
+### Normalizing Checkouts
+
+So the above analysis is intriguing, but we seem to be ignoring the fact that the number of checkouts a particular book is capable of getting is influenced by the number of copies of that book that are available at a given time.
+
+```{r calculate_kids_wealth_norm}
+# Calculating bins
+kidsBinsN <- kidsCheckouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>%  
+  mutate(count = n(), 
+          relativeCount = count / maxCopies) %>% 
+  distinct(BibNumber, .keep_all = TRUE) %>% 
+  arrange(relativeCount) %>% 
+  ungroup() %>% 
+  # Break up data into 100 bins based on checkout number
+  mutate(bin = ntile(relativeCount, 100))
+
+# Find average per bin
+kidsDistributionN <- kidsBinsN%>% 
+  group_by(bin) %>% 
+  summarise(average = round(mean(relativeCount)))
+```
+
+And plot the distribution
+
+```{r}
+ggplot(kidsDistributionN, aes(x = bin, y = average)) + geom_bar(stat = "identity") 
+```
+```{r calculate_adult_wealth_norm}
+# Calculating bins
+adultBinsN <- adultCheckouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>%  
+  mutate(count = n(), 
+          relativeCount = count / maxCopies) %>% 
+  distinct(BibNumber, .keep_all = TRUE) %>% 
+  arrange(relativeCount) %>% 
+  ungroup() %>% 
+  # Break up data into 100 bins based on checkout number
+  mutate(bin = ntile(relativeCount, 100))
+
+# Find average per bin
+adultDistributionN <- adultBinsN%>% 
+  group_by(bin) %>% 
+  summarise(average = round(mean(relativeCount)))
+```
+
+And plot the distribution
+
+```{r}
+ggplot(adultDistributionN, aes(x = bin, y = average)) + geom_bar(stat = "identity") 
+```
+```{r one_percent_rel_kids}
+# Find total number of book checkouts across all books
+totalCheckoutsKidsN <- kidsBinsN %>% 
+  summarise(sum = sum(relativeCount))
+
+# Find total number of checkouts from just the 1% of most checked-out books
+one_percent_kidsN <- kidsBinsN %>% 
+  filter(bin == 100) %>% 
+  summarise(sum = sum(relativeCount))
+
+round(one_percent_kidsN$sum / totalCheckoutsKidsN$sum * 100)
+```
+```{r one_percent_rel_adults}
+# Find total number of book checkouts across all books
+totalCheckoutsAdultN <- adultBinsN %>% 
+  summarise(sum = sum(relativeCount))
+
+# Find total number of checkouts from just the 1% of most checked-out books
+one_percent_adultN <- adultBinsN %>% 
+  filter(bin == 100) %>% 
+  summarise(sum = sum(relativeCount))
+
+round(one_percent_adultN$sum / totalCheckoutsAdultN$sum * 100)
+```
+
+
+What are the most popular books to checkout relative to the maximum number of copies available?
+
+```{r max_relative}
+# Calculating bins
+kidsMax <- kidsCheckouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>%  
+  mutate(count = n(), 
+          relativeCount = count / maxCopies) %>% 
+  distinct(BibNumber, .keep_all = TRUE) %>% 
+  arrange(desc(relativeCount))
+
+kidsMaxAbs <- kidsMax %>% 
+  arrange(desc(count))
+```
+
+These are the top 20 most popular kids' books, by relative checkouts (i.e. checkouts per copy).
+```{r echo = FALSE}
+DT::datatable(head(kidsMax, 20), rownames = FALSE, filter = "top", options = list(pageLength = 5, scrollX = TRUE))
+```
+
+These are the top 20 most popular kids' books by absolute number of checkouts:
+```{r echo = FALSE}
+DT::datatable(head(kidsMaxAbs, 20), rownames = FALSE, filter = "top", options = list(pageLength = 5, scrollX = TRUE))
+```
+
+```{r max_relative_adult}
+# Calculating bins
+adultMax <- adultCheckouts %>% 
+  # Count the number of checkouts per BibNumber
+  group_by(BibNumber) %>%  
+  mutate(count = n(), 
+          relativeCount = count / maxCopies) %>% 
+  distinct(BibNumber, .keep_all = TRUE) %>% 
+  arrange(desc(relativeCount))
+
+adultMaxAbs <- adultMax %>% 
+  arrange(desc(count))
+```
+
+These are the top 20 most popular adult books, by relative checkouts (i.e., checkouts per copy).
+
+```{r echo = FALSE}
+DT::datatable(head(adultMax, 20), rownames = FALSE, filter = "top", options = list(pageLength = 5, scrollX = TRUE))
+```
+
+These are the top 20 most popular adult books by absolute number of checkouts:
+```{r echo = FALSE}
+DT::datatable(head(adultMaxAbs, 20), rownames = FALSE, filter = "top", options = list(pageLength = 5, scrollX = TRUE))
+```
+
+### BestSellers
+
+A combination of queries from our team members led us to wonder which books are never checked out and how many of those had some acclaim? 
+
+In order to measure acclaim, we can start by checking for books that were on the NYT Best Seller's List. Luckily for us, Rosie Cima compiled a pretty complete version of this for a project a few years ago. Let's see what she came up with:
+
+```{r}
+nyt <- read_csv("https://github.com/cimar/books/blob/master/the_processed_data.csv")
+```
+
+```{r}
+patterson <- checkouts %>% 
+  filter(BibNumber == "3339257" | BibNumber == "2345888" | BibNumber == "3029183")
+
+pTally <- patterson %>% 
+  mutate(year = format(date, "%Y")) %>% 
+  count(year) %>% 
+  ungroup()
+
+ggplot(pTally, aes(x = year, y = n, group = 1)) + geom_line()
+```
+
+```{r}
+davinci <- checkouts %>% 
+  filter(BibNumber == "2162912") 
+
+dTally <- davinci %>% 
+  mutate(year = format(date, "%Y")) %>% 
+  count(year) %>% 
+  ungroup()
+
+ggplot(dTally, aes(x = year, y = n, group = 1)) + geom_line()
+```
+
+```{r}
+steel <- checkouts %>% 
+  filter(BibNumber == "1968798")
+
+sTally <- steel %>% 
+  mutate(year = format(date, "%Y")) %>% 
+  count(year) %>% 
+  ungroup() %>% 
+  mutate(book = "The House")
+```
+
+
+```{r}
+pTally <- pTally %>% mutate(book = "The 5th Horseman")
+dTally <- dTally %>% mutate(book = "The Da Vinci Code")
+
+combine <- rbind(pTally, dTally)
+
+ggplot(combine, aes(x = year, y = n, group = book, color = book)) + geom_line()
+```
+
+
+## For Production
+
+
+So, we've decided to pursue a few routes.
+
+### Checked out Once
+
+First, I want to see which books have only been checked out once AND were available for at least the last year (according to the inventory).
+
+```{r calc_last_catalog}
+last_catalog <- catalogMinimal %>% 
+  # Filter to just books available in the last year
+  filter(minDate <= "2018-05-01" & maxDate >= "2019-05-01")
+```
+
+Now, to filter down the checkouts to just books that are in the `last_catalog`.
+
+```{r calc_last_checkouts}
+last_checkouts <- checkouts %>% 
+  # Filter to just books available in the last year
+  filter(BibNumber %in% last_catalog$BibNum) %>% 
+  # Count how many times they've been checked out 
+  count(BibNumber) %>% 
+  # Filter to just books that have been checked out only once 
+  filter(n == 1)
+```
+
+### Never Checked Out
+
+Next, I want to see which books were available in the library for the entire duration of the inventory but were never checked out. 
+
+That is, the ones that *aren't* in our checkout dataset.
+```{r calc_full_catalog}
+full_catalog <- catalogMinimal %>% 
+  # Filter to just books available the entire time between Sept 17 and May 19
+  filter(minDate <= "2017-09-01" & maxDate >= "2019-05-01")
+```
+
+
+```{r calc_zero_checkouts}
+# define helper that looks for items not in a specified vector
+`%notin%` <- purrr::negate(`%in%`)
+
+zero_checkouts <- full_catalog %>% 
+  # Filter to books not in our checkout data 
+  filter(Title %notin% checkouts$Title)
+```
+
+What item collections are these books in? 
+```{r}
+itemCol <- zero_checkouts %>% 
+  count(ItemCollection)
+```
+
+
+Alright, let's narrow down to just our "hipster" recommendations. That is, fiction books, that haven't been checked out at all in the past 15 years.
+
+```{r calc_hipster}
+hipster <- zero_checkouts %>% 
+  # Filter to just fiction books
+  filter(grepl("fic", ItemCollection)) %>% 
+  # Filter out uncataloged books
+  filter(!grepl("Uncataloged", Title))
+```
+
+Then, I need to remove any duplicates where the book was checked out but filed under a different BibNumber. In order to do that, I'm going to make a new minimal catalog with a character vector of all possible bibnumbers per title.
+
+```{r dedupe_cat}
+# remove duplicates where book was checked out & filed under different BibNumber
+# start by creating catalog with character vector of all possible BibNumbers per title
+dedupe <- full_catalog %>% 
+  group_by(Title) %>% 
+  summarise(allBib = toString(BibNum)) %>% 
+  ungroup()
+```
+
+Now, to dedupe our hipster set 
+```{r dedupe_hipster}
+# Dedupe hipster dataset with new catalog
+hipsterDupe <- hipster %>% 
+  # combine with our deduplicated inventory
+  left_join(dedupe) %>% 
+  # look for a comma 
+  filter(grepl(",", allBib)) %>% 
+  # separate comma separated list into rows
+  separate_rows(allBib, sep = ",") %>% 
+  mutate(allBib = trimws(allBib),
+         # mark if there is an alternate version of the book available
+         altAvail = allBib %in% checkouts$BibNumber)
+
+hipsterDupeSum <- hipsterDupe %>% 
+  # Remove any where a version of the book returns TRUE
+  filter(altAvail == TRUE)
+
+hipsterDeDupe <- hipster %>% 
+  # filter out any with alternate versions available
+  filter(!BibNum %in% hipsterDupeSum$BibNum)
+```
+
+
+Now to clean the hipster dataset 
+
+```{r clean_hipster}
+hipsterClean <- hipsterDeDupe %>% 
+  # Clean the titles
+  mutate(cleanTitle = gsub(" \\/ .*", "", Title)) %>% 
+  # Keep only first publication year
+  mutate(singleYear = gsub(",.*", "", PublicationYear),
+         singleYear = gsub(" \\[.*", "", singleYear)) %>% 
+  # Keep only numbers
+  mutate(cleanYear = gsub("[^0-9]", "", singleYear)) %>% 
+  select(c(BibNum, cleanTitle, Author, ISBN, cleanYear, Subjects, ItemType, ItemCollection, maxCopies)) %>% 
+  rename(Title = cleanTitle, PubYear = cleanYear)
+```
+
+And write this to file
+
+```{r}
+puddingR::export_processed(hipsterClean, filename = "hipster_recs", location = "processed", format = "csv")
+```
+
+
+We've been adding some data manually into a Google Sheet, so let's download that
+
+```{r load_gd}
+sheetID <- googledrive::as_id("https://docs.google.com/spreadsheets/d/10FMp0ZILmHT8-aUwfXPM6sqvQnLteGz1I8LD-6UxuvE/edit#gid=66973562")
+
+manualPath <- here::here("assets", "data", "processed_data", "manual_hipster.csv")
+
+googledrive::drive_download(sheetID, 
+                            path = manualPath, 
+                            overwrite = TRUE)
+
+manualHip <- readr::read_csv(manualPath)
+```
+Let's look for unique categories:
+
+```{r}
+cats <- manualHip %>% 
+  separate_rows(Category, sep = ",") %>% 
+  mutate(Category = trimws(Category),
+         Category = tolower(Category)) %>% 
+  count(Category)
+```
+
+
+Let's try taking the `subjects` from the catalog 
+```{r finding_subjects}
+# binding subjects back onto books
+subjects <- catalogMinimal %>% select(c(BibNum, Subjects))
+
+# combine subjects from worldcat and catalog
+hipCats <- manualHip %>% 
+  mutate(BibNum = as.integer(BibNum)) %>% 
+  left_join(subjects) %>% 
+  mutate(combo = case_when(
+    Subjects == "" & is.na(Category) ~ NA_character_, 
+    Subjects == "" & !is.na(Category) ~ Category,
+    is.na(Category) & Subjects != "" ~ Subjects,
+    TRUE ~ str_c(Subjects, Category, sep = ", ")
+  ))
+
+# combine similar categories
+hipCatSum <- hipCats %>% 
+  filter(!is.na(combo)) %>% 
+  separate_rows(combo, sep = ",") %>% 
+  mutate(combo = trimws(combo),
+         combo = tolower(combo)) %>% 
+  count(combo, sort = TRUE)
+
+# define categories for front-end
+pnw <- c("Washington", "Oregon", "Idaho")
+nonWestern <- paste0(tolower(state.name[!state.name %in% pnw]), collapse = "|")
+otherCountries <- c("russia|brazil|canada|france|africa[:space:]|arctic|czech|europ|france|french|german|greenland|jamaica|nigeria|norway|nova scotia|panama|portug|spanish|vancouver")
+
+# assign parent categories
+hipCatCum <- hipCats %>% 
+  mutate(combo = tolower(combo)) %>% 
+  mutate(child = ifelse(grepl("child|juvenile", combo), "child", NA_character_),
+         frontier = ifelse(grepl("frontier|western|pioneer", combo), "frontier", NA_character_),
+         romance = ifelse(grepl("romance|relation", combo), "romance", NA_character_),
+         pnw = ifelse(grepl("washington|oregon|idaho|northwest", combo), "pnw", NA_character_),
+         states = ifelse(grepl(nonWestern, combo), "states", NA_character_),
+         countries = ifelse(grepl(otherCountries, combo), "countries", NA_character_),
+         short = ifelse(grepl("short", combo), "short", NA_character_)) %>% 
+  unite(new,c(child:short), sep = ", ", na.rm = TRUE, remove = TRUE) 
+```
+
+```{r}
+newCounts <- hipCatCum %>% 
+  filter(new != "") %>% 
+  separate_rows(new, sep = ", ") %>% 
+  count(new, sort = TRUE)
+
+output <- hipCatCum %>% 
+  select(c(BibNum, combo, new))
+
+puddingR::export_data(output, "crosswalk", location = "processed")
+```
+
+
+```{r}
+# clean data for sharing 
+for_sharing <- hipCatCum %>% 
+  select(-c("HasImage", "Subjects", "Category")) %>% 
+  rename(Title = TitleClean, Author = AuthorClean, Subjects = combo, Parent = new) 
+```
+

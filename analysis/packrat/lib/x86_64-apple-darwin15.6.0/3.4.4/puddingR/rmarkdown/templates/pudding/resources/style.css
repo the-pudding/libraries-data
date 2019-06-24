@@ -1,0 +1,159 @@
+body{
+  --accent: #ff533d;
+  --font: #282828;
+  --bg: #ffffff;
+  --gray-light: #c9c9c9;
+  --gray: #969696;
+  --gray-dark: #5b5b5b
+}
+
+h1 {
+  font-size: 36px;
+  text-align: center;
+  margin-top: 2rem;
+}
+
+h1.title{
+  font-weight: bold;
+  color: var(--accent);
+}
+
+p {
+  font-size: 16px;
+}
+
+pre {
+  border: none
+}
+
+/*---- Header ----*/
+header{
+  display: none;
+  margin-bottom: 4rem;
+  padding: 2rem 0;
+  text-align: center;
+  box-shadow: 0 7px 7px -7px var(--gray-light);
+}
+
+header img{
+  max-width: 144px;
+  height: auto;
+
+}
+
+#header {
+  margin-bottom: 6rem;
+}
+
+.author{
+  text-align: center;
+  font-size: 16px;
+  color: var(--font);
+}
+
+.date{
+  font-size: 14px;
+  color: var(--gray);
+  text-align: center;
+}
+
+/*----- Links ----- */
+a {
+  color: var(--font);
+  border-bottom: 1px solid var(--font);
+  transition: 100ms ease-in-out;
+  text-decoration: none;
+}
+
+a:hover{
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent);
+  transition: 100ms ease-in-out;
+  text-decoration: none;
+}
+
+.dropdown-menu a{
+  border-bottom: none;
+}
+
+/*--- Table of Contents ----*/
+#TOC {
+  position: fixed;
+  margin: 1.5rem, 0 1.5rem 0;
+
+}
+
+div.tocify{
+  width: 20%;
+  max-width: 16.25rem;
+  max-height: 85%;
+  border-radius: 0px;
+}
+
+.tocify{
+  overflow: auto;
+  border: none;
+  color: var(--gray);
+}
+
+.tocify-item{
+  padding: 0.5rem;
+  border-color: none;
+  border-left: 2px solid var(--bg);
+  background-color: transparent;
+  border-radius: 0px;
+}
+
+.list-group-item{
+  padding: 0.5rem;
+  border-color: none;
+  border-left: 2px solid var(--bg);
+  background-color: transparent;
+  border-radius: 0px;
+}
+
+.list-group-item.active, .list-group-item.active:hover, .list-group-item.active:focus {
+  background-color: transparent;
+  border-color: none;
+  border-left: 2px solid var(--accent);
+  color: var(--gray-dark);
+  border-radius: 0px;
+}
+
+
+.logo{
+  max-width: 144px;
+  margin-bottom: 2rem;
+}
+
+/* ------ This is just to fix the bug on Safari where table of content is on top of content */
+.toc-content {
+  margin-left: 210px
+}
+
+/*---- Buttons ------*/
+.btn, .btn-default{
+  border: none;
+  font-weight: normal;
+  background-color: var(--bg);
+  color: var(--accent);
+  padding: 0.25rem 0.5rem;
+  transition: 100ms ease-in-out;
+  margin-top: 0px;
+}
+
+.btn:hover, .btn-default:hover{
+  border: none;
+  background-color: var(--accent);
+  color: var(--bg);
+  transition: 100ms ease-in-out;
+  margin-top: 0px;
+}
+
+/*---- Misc ----*/
+blockquote{
+  background-color: #f4ecf7;
+  border-left: 5px solid #a239ca;
+  font-size: 18px;
+  padding: 2rem;
+}

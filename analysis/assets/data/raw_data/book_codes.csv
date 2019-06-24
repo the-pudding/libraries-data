@@ -1,0 +1,115 @@
+Code,Description,Category Group
+ncenf,NC-Easy Nonfiction,Nonfiction
+ccnf,CC-Children's Nonfiction,Nonfiction
+nanf,NA-Nonfiction,Nonfiction
+pknf,Peak Picks-Nonfiction,Nonfiction
+ncnf,NC-Children's Nonfiction,Nonfiction
+ccfic,CC-Children's Fiction,Fiction
+nainv,NA-Investment Collection,Nonfiction
+namar,NA-Marine Collection,Nonfiction
+canf,CA-Nonfiction,Nonfiction
+cafic,CA3-Fiction,Fiction
+camys,CA3-Mystery,Fiction
+canew,CA3-New Adult Books,Fiction
+casf,CA3-Science Fiction,Fiction
+cass,CA3-Short Stories,Fiction
+cawa,CA0-WaAuthors,Fiction
+cawest,CA3-Western,Fiction
+cs1fic,CS 3 - Fiction,Fiction
+cs1malf,CS 1 - MOB Large Print Fiction,Fiction
+cs3fic,CS 3 - Fiction,Fiction
+cs3mamy,CS 3 - MOB Mysteries,Fiction
+naaafic,AfAm - Fiction,Fiction
+naaanew,AfAm - New,Fiction
+naaapb,AfAm - Paperbacks,Fiction
+naclfic,NA-Classics (Fiction),Fiction
+peakfic,Peak Picks Fiction,Fiction
+nafic,NA-Fiction,Fiction
+cclpfic,CC-Children's Large Print,Fiction
+namys,NA-Mysteries,Fiction
+nanew,NA-New Adult Books,Fiction
+napb,NA-Paperbacks,Fiction
+nasf,NA-Sci-Fic/Fantasy,Fiction
+nass,NA-Short Stories,Fiction
+nawest,NA-Westerns,Fiction
+calpfic,CA3-Large Print Fiction,Fiction
+calpnew,CA3-Large Print New,Fiction
+nalpfic,NA-Large Print Fiction,Fiction
+nalpnew,NA-Large Print New,Fiction
+peaknf,Peak Picks-Nonfiction,Nonfiction
+caatlas,CA9-Atlases,Nonfiction
+calibr,CA8-Libretto File,Nonfiction
+caover,CA-Oversize,Nonfiction
+cash,CA9-Nonfiction Shakespeare S Call Nos.,Nonfiction
+naaanf,AfAm - Nf,Nonfiction
+naatlas,NA-Atlases,Nonfiction
+naauto,NA-Auto Collection,Nonfiction
+naclnf,NA-Classics (Nonfiction),Nonfiction
+nacon,NA-Consumer,Nonfiction
+naglc,NA-Gay/Lesbian Collection,Nonfiction
+nahmwk,NA-Homework,Nonfiction
+nahome,NA-Home Improvement,Nonfiction
+najob,NA-Job And Education,Nonfiction
+nana,NA-Native American,Nonfiction
+naover,NA-Oversize,Nonfiction
+napar,NA-Parenting,Nonfiction
+natxt,NA-School Textbooks,Nonfiction
+navidg,NA-Video Guides,Nonfiction
+cab,CA9-Biography,Nonfiction
+naaab,AfAm - Biographies,Nonfiction
+nab,NA-Biography,Nonfiction
+calpnf,CA3-Large Print Nonfiction,Nonfiction
+cs1malp,CS 1 - MOB Large Print Nonfiction,Nonfiction
+nalpnf,NA-Large Print Nonfiction,Nonfiction
+ccaward,CC-Children's Newbery/Caldecott,Fiction
+ccef,CC-Children's Easy Fiction,Fiction
+ccser,CC-Children's Series,Fiction
+ncaward,NC-Children's-Newbery/Caldecott,Fiction
+ncef,NC-Easy Fiction,Fiction
+ncfic,NC-Children's Fiction,Fiction
+ncnew,NC-Children's New Materials,Fiction
+ncpb,NC-Children's Paperbacks,Fiction
+ncser,NC-Children's Series,Fiction
+cchol,CC-Children's Holiday,Fiction
+nchol,NC-Children's Holiday,Fiction
+ncholsk,NC-Children's Holiday-STK,Fiction
+nclp,NC-Children's Large Print,Fiction
+ccrdr,CC-Children's Readers,Fiction
+ccfft,CC-Folk And Fairy Tales,Nonfiction
+ccnew,CC-Children's New Materials,Nonfiction
+ncaa,Afam - Children's Circulating,Nonfiction
+ncfft,NC-Folk And Fairy Tales,Nonfiction
+ccb,CC-Children's Biographies,Nonfiction
+ncb,NC-Children's Biographies,Nonfiction
+cyfic,CY3-Teen Fiction,Fiction
+cynew,CY3-Teen New Books,Fiction
+cyser,CY3-Teen Series,Fiction
+nyfic,NY-Teen - Fiction,Fiction
+nynew,NY-Teen - New Books,Fiction
+nypb,NY-Teen Paperbacks,Fiction
+nyser,NY-Teen Series,Fiction
+cylp,CY3-Teen Large Print,Fiction
+nylp,NY-Teen Large Print,Fiction
+cynf,CY-Teen Nonfiction,Nonfiction
+nynf,NY-Teen - Nonfiction,Nonfiction
+cyb,CY9-Teen Biography,Nonfiction
+nyb,NY-Teen - Biography,Nonfiction
+nacomic,NA-Comics/Graphic Novels,Fiction
+cycomic,CY3-Teen Comics & Graphic Novels,Fiction
+caaerop,Cs9-AERO Periodicals,Nonfiction
+nycomic,NY-Teen - Comics & Graphic Novels,Fiction
+ncseas,NC--Children's Seasonal,Fiction
+nccomic,NC-Children's Comics,Fiction
+pkfic,Peak Picks Fiction,Fiction
+caaeroo,Cs9-AERO Oversize,Nonfiction
+ncbb,NC-Children's Board Books,Fiction
+caaeroc,Cs9-AERO Valmat,Nonfiction
+naholr,NA-Holiday - Adult - Ref,Fiction
+ncrdr,NC--Children's Readers,Fiction
+nahol,NA-Holiday - Adult,Fiction
+cccomic,CC-Children's Comics,Fiction
+ncpic,NC--Children's Picture Books,Fiction
+naholsk,NA-Holiday - Adult - Stack,Fiction
+cacomic,CA3-Graphic Novels,Fiction
+ccpic,CC-Children's Picture Books,Fiction
+caaerov,Cs9-AERO Valmat Oversize,Nonfiction

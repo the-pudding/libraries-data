@@ -1,0 +1,7 @@
+create_codebook         Create a Data Codebook
+create_project          Create New Pudding Project
+export_all              Export Data, Codebook, and Scripts
+export_code             Export several code chunks from Rmd to R
+export_data             Export Processed Data
+knit_data_readme        Knit Codebooks to Single README
+puddingTheme            Use Pudding Theme

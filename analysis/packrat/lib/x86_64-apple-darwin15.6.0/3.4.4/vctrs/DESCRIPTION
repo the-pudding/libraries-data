@@ -1,0 +1,43 @@
+Package: vctrs
+Title: Vector Helpers
+Version: 0.1.0.9004
+Authors@R:
+    c(person(given = "Hadley",
+             family = "Wickham",
+             role = c("aut", "cre"),
+             email = "hadley@rstudio.com"),
+      person(given = "RStudio",
+             role = "cph"))
+Description: Defines new notions of prototype and size that are
+    used to provide tools for consistent and well-founded type-coercion
+    and size-recycling, and are in turn connected to ideas of type- and
+    size-stability useful for analyzing function interfaces.
+License: GPL-3
+URL: https://github.com/r-lib/vctrs
+BugReports: https://github.com/r-lib/vctrs/issues
+Depends: R (>= 3.2)
+Imports: backports, ellipsis (>= 0.1.0.9000), digest, glue, rlang (>=
+        0.3.4.9003), zeallot
+Suggests: bit64, covr, crayon, generics, knitr, pillar (>= 1.4.0.9001),
+        pkgdown, rmarkdown, testthat, tibble
+Remotes: r-lib/rlang, r-lib/ellipsis, r-lib/pillar
+VignetteBuilder: knitr
+Encoding: UTF-8
+Language: en-GB
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 6.1.1
+Author: Hadley Wickham [aut, cre],
+  RStudio [cph]
+Maintainer: Hadley Wickham <hadley@rstudio.com>
+Built: R 3.4.4; x86_64-apple-darwin15.6.0; 2019-06-18 21:42:00 UTC; unix
+RemoteType: github
+RemoteHost: https://api.github.com
+RemoteRepo: vctrs
+RemoteUsername: r-lib
+RemoteRef: master
+RemoteSha: ad48310c9b9daef44166680194691e1b566da352
+GithubRepo: vctrs
+GithubUsername: r-lib
+GithubRef: master
+GithubSHA1: ad48310c9b9daef44166680194691e1b566da352
